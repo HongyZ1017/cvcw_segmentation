@@ -2,6 +2,9 @@ clc;
 clear all;
 close all;
 
+rng('default');
+rng(21);
+
 imageDir = fullfile('data_for_moodle/images_256/')
 labelDir = fullfile('data_for_moodle/labels_256/')
 SortlabelDir = fullfile('labels/')
@@ -86,91 +89,97 @@ layers = [
     ]
 
 %tuning hyper parameter
-test_rate_set = [0.2, 0.25]
+% test_rate_set = [0.2, 0.25]
 global best_Accuracy bestNet
 best_Accuracy = 0
 bestNet = []
-results = table('Size', [0 6], ...
-    'VariableTypes', {'double', 'int32', 'int32', 'double', 'double', 'cell'}, ...
-    'VariableNames', {'TestRate', 'maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'});
+results = table('Size', [0 5], ...
+    'VariableTypes', {'int32', 'int32', 'double', 'double', 'cell'}, ...
+    'VariableNames', {'maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'});
 
-for t = 1: length(test_rate_set)
-    test_rate = test_rate_set(t)
-    cvpTest = cvpartition(length(commonFiles), 'HoldOut', test_rate)
-    testIdx = test(cvpTest)
-    trainValIdx = training(cvpTest)
-    
-    testimds = subset(imds, iim(testIdx))
-    testlbds = subset(lbds, ilb(testIdx))
-    testset = pixelLabelImageDatastore(testimds, testlbds)
-    
-    %tuning hyper parameter
-    n = 5
-    
-    cvpCross = cvpartition(sum(trainValIdx), 'KFold', n)
-    for j = 1: n
-        trainIdx = training(cvpCross, j)
-        valIdx = test(cvpCross, j)
-    
-        trainimds = subset(imds, iim(trainIdx))
-        valimds = subset(imds, iim(valIdx))
-        trainldbs = subset(lbds, ilb(trainIdx))
-        valildbs =subset(lbds, ilb(valIdx))
-    
-        trainset = pixelLabelImageDatastore(trainimds, trainldbs)
-        valiset = pixelLabelImageDatastore(valimds, valildbs)
-    
-        %get frequency of classes
-        tbl = countEachLabel(trainldbs)
-        totalNumOfPixels = sum(tbl.PixelCount);
-        frequency = tbl.PixelCount / totalNumOfPixels
-        classWeights = 1./frequency
-    
-    
-        %data augmentation
-        % aug = imageDataAugmenter('RandXReflection', true, ...
-        %     'RandYReflection', true, 'RandRotation', [-30,30], ...
-        %     'RandXScale', [0.7 1.3], 'RandYScale', [0.7 1.3], ...
-        %     'RandXShear', [-60,60], 'RandYShear', [-60,60]);
-        % augimds = augmentedImageDatastore(image_size, trainset, 'DataAugmentation', aug)
-    
-        epoch_set = [3, 5, 10]
-        minibatch = [32, 64]
-        inital_learn_rates = [0.001, 0.01]
-        for e = 1:length(epoch_set)
-            for m = 1:length(minibatch)
-                for i = 1: length(inital_learn_rates)
-                    modelName = sprintf('%.2fTestRate_%depoch_%dbatch_%.3flearnRate.mat', test_rate, epoch_set(e), minibatch(m), inital_learn_rates(i))
-    
-    
-                    opts = trainingOptions('adam', ...
-                        'InitialLearnRate',inital_learn_rates(i), ...
-                        'MaxEpochs', epoch_set(e), ...
-                        'MiniBatchSize', minibatch(m), ...
-                        'Shuffle', 'every-epoch', ...
-                        'ValidationData', valiset, ...
-                        'ValidationFrequency', 5, ...
-                        'Verbose', true, ...
-                        'Plots', 'training-progress', ...
-                        'ValidationPatience', 5, ...
-                        'OutputFcn',@(info)saveBestModel(info, modelName, layers))
-    
-                    [net, info] = trainNetwork(trainset,layers,opts)
-                    currentmeanPixel_Accuracy = max([info.ValidationAccuracy])
-                    newResult = table( test_rate, epoch_set(e), minibatch(m),inital_learn_rates(i), currentmeanPixel_Accuracy, {modelName},...
-                        'VariableNames', {'TestRate', 'maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'})
-                    
-    
-                    % Collect and save training results
-                    results = [results; newResult]
-                end
+
+test_rate = 0.2
+cvpTest = cvpartition(length(commonFiles), 'HoldOut', test_rate)
+testIdx = test(cvpTest)
+trainValIdx = training(cvpTest)
+
+testimds = subset(imds, iim(testIdx))
+testlbds = subset(lbds, ilb(testIdx))
+testset = pixelLabelImageDatastore(testimds, testlbds)
+
+%tuning hyper parameter
+n = 5
+
+cvpCross = cvpartition(sum(trainValIdx), 'KFold', n)
+for j = 1: n
+    trainIdx = training(cvpCross, j)
+    valIdx = test(cvpCross, j)
+
+    trainimds = subset(imds, iim(trainIdx))
+    valimds = subset(imds, iim(valIdx))
+    trainldbs = subset(lbds, ilb(trainIdx))
+    valildbs =subset(lbds, ilb(valIdx))
+
+    trainset = pixelLabelImageDatastore(trainimds, trainldbs)
+    valiset = pixelLabelImageDatastore(valimds, valildbs)
+
+    %get frequency of classes
+    tbl = countEachLabel(trainldbs)
+    totalNumOfPixels = sum(tbl.PixelCount);
+    frequency = tbl.PixelCount / totalNumOfPixels
+    classWeights = 1./frequency
+
+
+    %data augmentation
+    % aug = imageDataAugmenter('RandXReflection', true, ...
+    %     'RandYReflection', true, 'RandRotation', [-30,30], ...
+    %     'RandXScale', [0.7 1.3], 'RandYScale', [0.7 1.3], ...
+    %     'RandXShear', [-60,60], 'RandYShear', [-60,60]);
+    % augimds = augmentedImageDatastore(image_size, trainset, 'DataAugmentation', aug)
+
+    % epoch_set = [5, 10, 20]
+    % minibatch = [32, 64, 128]
+    % inital_learn_rates = [0.001, 0.01]
+
+    epoch_set = [20]
+    minibatch = [64]
+    inital_learn_rates = [0.001]
+    for e = 1:length(epoch_set)
+        for m = 1:length(minibatch)
+            for i = 1: length(inital_learn_rates)
+                modelName = sprintf('%depoch_%dbatch_%.3flearnRate.mat', epoch_set(e), minibatch(m), inital_learn_rates(i))
+
+
+                opts = trainingOptions('adam', ...
+                    'InitialLearnRate',inital_learn_rates(i), ...
+                    'MaxEpochs', epoch_set(e), ...
+                    'MiniBatchSize', minibatch(m), ...
+                    'ExecutionEnvironment','multi-gpu',...
+                    'Shuffle', 'every-epoch', ...
+                    'ValidationData', valiset, ...
+                    'ValidationFrequency', 5, ...
+                    'Verbose', true, ...
+                    'Plots', 'training-progress', ...
+                    'ValidationPatience', 5, ...
+                    'OutputFcn',@(info)saveBestModel(info, modelName, net))
+
+                [net, info] = trainNetwork(trainset,layers,opts)
+                currentmeanPixel_Accuracy = max([info.ValidationAccuracy])
+                newResult = table(epoch_set(e), minibatch(m),inital_learn_rates(i), currentmeanPixel_Accuracy, {modelName},...
+                    'VariableNames', {'maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'})
+
+
+                % Collect and save training results
+                results = [results; newResult]
             end
         end
     end
 end
 
 
+
 %use best model for test_set segmentation
+% 
 load('bestNet.mat', 'bestNet');
 predictedLabels = semanticseg(testimds, bestNet);
 metrics = evaluateSemanticSegmentation(predictedLabels, testlbds);
@@ -188,7 +197,11 @@ function stop = saveBestModel(info, modelName, net)
         if info.ValidationAccuracy > best_Accuracy
             best_Accuracy = info.ValidationAccuracy
             bestNet = net
-            save(modelName, 'bestNet')
+            save("BestNet", 'bestNet')
         end
+    end
+    if lastIter && strcmp(info.State, 'done')
+        stop = true;
+        disp('Completed all parameter combinations.');
     end
 end
