@@ -93,9 +93,9 @@ layers = [
 global best_Accuracy bestNet
 best_Accuracy = 0
 bestNet = []
-results = table('Size', [0 5], ...
-    'VariableTypes', {'int32', 'int32', 'double', 'double', 'cell'}, ...
-    'VariableNames', {'maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'});
+results = table('Size', [0 6], ...
+    'VariableTypes', {'int32', 'int32', 'int32', 'double', 'double', 'cell'}, ...
+    'VariableNames', {'N_vali','maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'});
 
 
 test_rate = 0.2
@@ -108,10 +108,11 @@ testlbds = subset(lbds, ilb(testIdx))
 testset = pixelLabelImageDatastore(testimds, testlbds)
 
 %tuning hyper parameter
-n = 5
+n = 4
 
 cvpCross = cvpartition(sum(trainValIdx), 'KFold', n)
 for j = 1: n
+    N_vali = j
     trainIdx = training(cvpCross, j)
     valIdx = test(cvpCross, j)
 
@@ -137,17 +138,13 @@ for j = 1: n
     %     'RandXShear', [-60,60], 'RandYShear', [-60,60]);
     % augimds = augmentedImageDatastore(image_size, trainset, 'DataAugmentation', aug)
 
-    % epoch_set = [5, 10, 20]
-    % minibatch = [32, 64, 128]
-    % inital_learn_rates = [0.001, 0.01]
-
-    epoch_set = [20]
-    minibatch = [64]
-    inital_learn_rates = [0.001]
+    epoch_set = [3,5]
+    minibatch = [32, 64]
+    inital_learn_rates = [0.001, 0.01]
     for e = 1:length(epoch_set)
         for m = 1:length(minibatch)
             for i = 1: length(inital_learn_rates)
-                modelName = sprintf('%depoch_%dbatch_%.3flearnRate.mat', epoch_set(e), minibatch(m), inital_learn_rates(i))
+                modelName = sprintf('%dvali_%depoch_%dbatch_%.3flearnRate.mat', j, epoch_set(e), minibatch(m), inital_learn_rates(i))
 
 
                 opts = trainingOptions('adam', ...
@@ -160,20 +157,29 @@ for j = 1: n
                     'ValidationFrequency', 5, ...
                     'Verbose', true, ...
                     'Plots', 'training-progress', ...
-                    'ValidationPatience', 5, ...
-                    'OutputFcn',@(info)saveBestModel(info, modelName, net))
+                    'ValidationPatience', 5)
 
                 [net, info] = trainNetwork(trainset,layers,opts)
+                % saveBestModel(info, net, best_Accuracy, bestNet)
+                if info.FinalValidationAccuracy > best_Accuracy
+                    best_Accuracy = info.ValidationAccuracy
+                    bestNet = net
+                    save("BestNet.mat", 'net')
+                end
                 currentmeanPixel_Accuracy = max([info.ValidationAccuracy])
-                newResult = table(epoch_set(e), minibatch(m),inital_learn_rates(i), currentmeanPixel_Accuracy, {modelName},...
-                    'VariableNames', {'maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'})
+                newResult = table(j,epoch_set(e), minibatch(m),inital_learn_rates(i), currentmeanPixel_Accuracy, {modelName},...
+                    'VariableNames', {'N_vali','maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'})
 
 
                 % Collect and save training results
                 results = [results; newResult]
+                
             end
+
         end
+
     end
+
 end
 
 
@@ -190,18 +196,10 @@ disp(['Global Accuracy: ', num2str(metrics.DataSetMetrics.GlobalAccuracy)]);
 
 
 %output function, save the best pixel Accuracy and model
-function stop = saveBestModel(info, modelName, net)
-    global best_Accuracy bestNet
-    stop = false
-    if strcmp(info.State, 'iteration') && ~isempty(info.ValidationAccuracy)
-        if info.ValidationAccuracy > best_Accuracy
-            best_Accuracy = info.ValidationAccuracy
-            bestNet = net
-            save("BestNet", 'bestNet')
-        end
-    end
-    if lastIter && strcmp(info.State, 'done')
-        stop = true;
-        disp('Completed all parameter combinations.');
-    end
-end
+% function saveBestModel(info, net, best_Accuracy, bestNet)
+%     if info.ValidationAccuracy > best_Accuracy
+%         best_Accuracy = info.ValidationAccuracy
+%         bestNet = net
+%         save("BestNet.mat", 'bestNet')
+%     end
+% end
