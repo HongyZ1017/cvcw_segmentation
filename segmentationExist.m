@@ -51,8 +51,9 @@ testlbds = subset(lbds, ilb(testIdx))
 testset = pixelLabelImageDatastore(testimds, testlbds)
 
 %tuning hyper parameter
-cvpCross = cvpartition(sum(trainValIdx), 'KFold', n)
 n = 4
+cvpCross = cvpartition(sum(trainValIdx), 'KFold', n)
+
 
 for j = 1: n
     N_vali = j
@@ -82,8 +83,9 @@ for j = 1: n
         for m = 1:length(minibatch)
             for i = 1: length(inital_learn_rates)
                 modelName = sprintf('%dvali_%depoch_%dbatch_%.3flearnRate.mat', j, epoch_set(e), minibatch(m), inital_learn_rates(i))
-
+                numGPU = gpuDeviceCount("all")
                 opts = trainingOptions('adam', ...
+                    'ExecutionEnvironment','multi-gpu', ...
                     'InitialLearnRate',inital_learn_rates(i), ...
                     'MaxEpochs',epoch_set(e), ...
                     'MiniBatchSize',minibatch(m), ...
@@ -91,7 +93,6 @@ for j = 1: n
                     'ValidationData', valiset, ...
                     'ValidationFrequency', 5, ...
                     'Verbose', true, ...
-                    'Plots', 'training-progress', ...
                     'ValidationPatience', 5)
 
 
@@ -100,7 +101,7 @@ for j = 1: n
                 if info.FinalValidationAccuracy > best_Accuracy
                     best_Accuracy = info.ValidationAccuracy
                     bestNet = net
-                    save("BestNet.mat", 'net')
+                    save("bestNetExit.mat", 'net')
                 end
 
                 currentmeanPixel_Accuracy = max([info.ValidationAccuracy])
@@ -118,7 +119,7 @@ for j = 1: n
 end
 
 %use best model for test_set segmentation
-load('bestNet1.mat', 'bestNet');
+load('bestNetExit.mat', 'bestNet');
 predictedLabels = semanticseg(testimds, bestNet);
 metrics = evaluateSemanticSegmentation(predictedLabels, testlbds);
 
