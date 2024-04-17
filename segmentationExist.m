@@ -26,7 +26,7 @@ global best_Accuracy bestNet
 best_Accuracy = 0
 bestNet = []
 results = table('Size', [0 6], ...
-    'VariableTypes', {'int32', 'int32', 'int32', 'double', 'double', 'cell'}, ...
+    'VariableTypes', {'int32','int32', 'int32', 'double', 'double', 'cell'}, ...
     'VariableNames', {'N_vali','maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'});
 
 %select image and related index
@@ -51,10 +51,14 @@ testlbds = subset(lbds, ilb(testIdx))
 testset = pixelLabelImageDatastore(testimds, testlbds)
 
 %tuning hyper parameter
+n = 3
 cvpCross = cvpartition(sum(trainValIdx), 'KFold', n)
-n = 4
+
 
 for j = 1: n
+    if j==1
+        continue
+    end
     N_vali = j
 
     trainIdx = training(cvpCross, j)
@@ -74,51 +78,46 @@ for j = 1: n
     frequency = tbl.PixelCount / totalNumOfPixels
     classWeights = 1./frequency
 
-    epoch_set = [3,5]
-    minibatch = [32,64]
-    inital_learn_rates = [0.001, 0.01]
+    epoch_set = 3
+    minibatch = 32
+    inital_learn_rates = 0.001
 
-    for e = 1:length(epoch_set)
-        for m = 1:length(minibatch)
-            for i = 1: length(inital_learn_rates)
-                modelName = sprintf('%dvali_%depoch_%dbatch_%.3flearnRate.mat', j, epoch_set(e), minibatch(m), inital_learn_rates(i))
+    
+    modelName = sprintf('%dvali_%depoch_%dbatch_%.3flearnRate.mat', j, epoch_set, minibatch, inital_learn_rates)
 
-                opts = trainingOptions('adam', ...
-                    'InitialLearnRate',inital_learn_rates(i), ...
-                    'MaxEpochs',epoch_set(e), ...
-                    'MiniBatchSize',minibatch(m), ...
-                    'Shuffle', 'every-epoch', ...
-                    'ValidationData', valiset, ...
-                    'ValidationFrequency', 5, ...
-                    'Verbose', true, ...
-                    'Plots', 'training-progress', ...
-                    'ValidationPatience', 5)
+    opts = trainingOptions('adam', ...
+        'InitialLearnRate',inital_learn_rates, ...
+        'MaxEpochs',epoch_set, ...
+        'MiniBatchSize',minibatch, ...
+        'Shuffle', 'every-epoch', ...
+        'ValidationData', valiset, ...
+        'ValidationFrequency', 5, ...
+        'Verbose', true, ...
+        'Plots', 'training-progress', ...
+        'ValidationPatience', 5)
 
 
-                [net, info] = trainNetwork(trainset, lgraph, opts)
+    [net, info] = trainNetwork(trainset, lgraph, opts)
 
-                if info.FinalValidationAccuracy > best_Accuracy
-                    best_Accuracy = info.ValidationAccuracy
-                    bestNet = net
-                    save("BestNet.mat", 'net')
-                end
-
-                currentmeanPixel_Accuracy = max([info.ValidationAccuracy])
-                newResult = table(j,epoch_set(e), minibatch(m),inital_learn_rates(i), currentmeanPixel_Accuracy, {modelName},...
-                    'VariableNames', {'N_vali','maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'})
-
-
-                % Collect and save training results
-                results = [results; newResult]
-
-            end
-        end
+    if info.FinalValidationAccuracy > best_Accuracy
+        best_Accuracy = info.ValidationAccuracy
+        bestNet = net
+        save("bestNetExit.mat", 'net')
     end
+
+    currentmeanPixel_Accuracy = max([info.ValidationAccuracy])
+    newResult = table(j,epoch_set, minibatch,inital_learn_rates, currentmeanPixel_Accuracy, {modelName},...
+        'VariableNames', {'N_vali','maxEpoch', 'miniBatchSize', 'initailLearningRate', 'valiAccuarcy', 'modelName'})
+
+
+    % Collect and save training results
+    results = [results; newResult]
+
 
 end
 
 %use best model for test_set segmentation
-load('bestNet1.mat', 'bestNet');
+load('bestNetExit.mat', 'bestNet');
 predictedLabels = semanticseg(testimds, bestNet);
 metrics = evaluateSemanticSegmentation(predictedLabels, testlbds);
 
