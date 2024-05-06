@@ -1,2 +1,2 @@
-Final branches contain the final version of models and results
-other is testing file.
+Final branch contains the final version of models and results
+other branches are the testing i have made
